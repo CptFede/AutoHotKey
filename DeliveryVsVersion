@@ -1,0 +1,202 @@
+/*
+DeliveryVsVersion v1.0
+	by Federico SIMONATO
+Licensed under Apache License v2.0
+#### BASICS ####
+	Select file contain Hostname of the server as:
+		server1
+		server10
+		server11
+	Select files to send @ servers
+	Output HTML Report as DeliveryLog_%MyDate%.log
+	Output Log file as DeliveryReport_%MyDate%.html
+See Documentation at :- 
+	avi-aryan.github.io/ahk/tools/htmltag.html
+	
+	;+++++++++++++++++++++++++++++++++++++++
+	;LogMe(LogMeText,LogMeFile) function          +
+	;WriteHtmlHeader(HtmlFile) function           +
+	;WriteHtmlBody(HtmlFile,MyArray)) function    +
+	;FileSort(File2Sort) function                 +
+	;+++++++++++++++++++++++++++++++++++++++
+*/
+
+Menu, Tray, icon, C:\MAIORANA\DeliveryVsVersion\UpLoad.ico
+
+;Assegno le variabili
+FormatTime, MyDate, , yyyyMMdd_hhmmss
+TempBatch = Test.bat
+MapDrive = K
+DirectoryCheckVar = k:\s3_exec
+LogFile = DeliveryLog_%MyDate%.log
+VersionList = VersionList.ini
+ArrayCount = 0
+HtmlArray := Object()
+MyHtmlFile = DeliveryReport_%MyDate%.html
+
+;main
+
+FileSelectFile, VarSourceFile, 3,, Seleziona il file contenenete la lsita dei servers.
+FileServerList = %VarSourceFile%
+
+FileSort(VarSourceFile)
+
+FileSelectFile, UploadFile, M3 ,, Seleziona il file da inviare ai servers. 
+if UploadFile =
+{
+    MsgBox, The user pressed cancel.
+    return
+}
+UploadFile2Send = %UploadFile%
+
+RunWriteHtmlHeader := WriteHtmlHeader(MyHtmlFile)
+
+Loop
+{
+	MySkip:
+    FileReadLine, line, %FileServerList%, %A_Index%
+    if ErrorLevel
+		{
+		If ErrorLevel = 1
+			{
+			Message = 1 Warning processing "%line%" Errorlevel = %ErrorLevel%`r`n
+			TrayTip,Delivery PKG,%Message%,10,1			
+			RunLogMe := LogMe(Message,LogFile)
+			break
+			}
+		If (line = "")
+			{
+			;MsgBox,,, Errore nella lettura dell lista dei server %ErrorLevel%...,2
+			Message = 2 Warning processing "%line%" Errorlevel = %ErrorLevel%`r`n
+			TrayTip,Delivery PKG,%Message%,10,1
+			RunLogMe := LogMe(Message,LogFile)
+			;GoTo MySkip
+			break
+			}
+		}
+    ;MsgBox, 4, , Processo %line%.maiorana.it.,1
+	Message = 3 Processing %line%.maiorana.it `r`n
+	TrayTip,Delivery PKG,%Message%,10,1
+	RunLogMe := LogMe(Message,LogFile)
+	
+	RunWait, %comspec% /C Net Use %MapDrive%: /DELETE /YES,,UseErrorLevel hide
+	RunWait, %comspec% /c net use %MapDrive%: \\%line%.maiorana.it\c$ maiorana /user:maiorana\db2admin,,UseErrorLevel hide
+
+	Message = 4 Map Drive Errorlevel=%ErrorLevel% `r`n
+	TrayTip,Delivery PKG,%Message%,10,1
+	RunLogMe := LogMe(Message,LogFile)
+	
+	IfNotExist, %DirectoryCheckVar%
+		{
+		MsgBox,,,Impossibile Connetersi al server %line%.,2
+		Message = 5 Error not able to connect @"%line%"`r`n
+		RunLogMe := LogMe(Message,LogFile)
+		}
+	else
+		{
+		MsgBox, 4, , %line% Done.,1
+		ArrayCount += 1  ; Keep track of how many items are in the array.
+		Loop, parse, UploadFile, `n
+		{
+			if a_index = 1
+			{
+				;MsgBox, The selected files are all contained in %A_LoopField%.
+				VarRoot = %A_LoopField%
+				Message = The selected files are all contained in %A_LoopField%. `r`n
+				TrayTip,Delivery PKG,%Message%,10,1
+				RunLogMe := LogMe(Message,LogFile)
+			}
+			else
+			{
+				;MsgBox, 4, , The next file is %A_LoopField%.  Continue?,2
+				FileCopy, %VarRoot%\%A_LoopField%, K:\s3_exec\%A_LoopField%,1
+				if ErrorLevel = 0
+				{
+					;MsgBox,,,Copy %VarRoot%\%A_LoopField% in K:\s3_exec\%A_LoopField%,1
+					FileGetTime, FileCreationTime , K:\s3_exec\%A_LoopField%, C
+					Message = Copy %VarRoot%\%A_LoopField% in K:\s3_exec\%A_LoopField% ERRORLEVEL=%ErrorLevel%. `r`n
+					TrayTip,Delivery PKG,%Message%,10,1
+					RunLogMe := LogMe(Message,LogFile)
+					FormatTime, TimeString, , yyyyMMddhhmmss
+					HtmlArray[A_Index] :=  "<tr><td>" TimeString "</td><td>" line "</td><td>"  A_LoopField "</td><td>"  FileCreationTime "</td></tr>"
+					FileAppend, %value%`n, %MyHtmlFile%
+					IfMsgBox, No, break
+				}
+				else
+				{
+					;MsgBox,,,Unable to Copy %VarRoot%\%A_LoopField% in K:\s3_exec\%A_LoopField%,2
+					Message = ERROR!!!Unable to Copy %VarRoot%\%A_LoopField% in K:\s3_exec\%A_LoopField% ERRORLEVEL=%ErrorLevel%. `r`n
+					TrayTip,Delivery PKG,%Message%,10,3
+					RunLogMe := LogMe(Message,LogFile)
+				}
+
+			}
+		}
+
+		}
+}
+
+;WriteHtmlBody(MyHtmlFile,HtmlArray)
+end:
+MsgBox End!
+
+;++++++++++++++++++++++
+;functions   +
+;++++++++++++++++++++++
+
+;+++++++++++++++++++++++++++++++++++++++
+;LogMe(LogMeText,LogMeFile) function   +
+;+++++++++++++++++++++++++++++++++++++++
+
+LogMe(LogMeText,LogMeFile)
+{
+FormatTime, OutputVar, , yyyy-MM-dd hh:mm:ss
+FileAppend, %OutputVar% - %LogMeText%, %LogMeFile% 
+}
+
+;+++++++++++++++++++++++++++++++++++++++
+;WriteHtmlHeader(HtmlFile) function    +
+;+++++++++++++++++++++++++++++++++++++++
+WriteHtmlHeader(HtmlFile)
+{
+FormatTime, ReportDate, , yyyy-MM-dd hh:mm:ss
+FileAppend,  ; The comma is required in this case.
+(
+<html>
+<H3>Visual Store Version report %ReportDate% </H3>
+<table border="1">
+<tr style="background-color:#a0a0ff;font:10pt Tahoma;font-weight:bold;" align="left">
+<td>Timestamp</td>
+<td>ServerName</td>
+<td>Filename</td>
+<td>CreationTime</td>
+</tr>
+), %HtmlFile%
+}
+
+;++++++++++++++++++++++++++++++++++++++++++++++
+;WriteHtmlBody(HtmlFile,MyArray)) function    +
+;++++++++++++++++++++++++++++++++++++++++++++++
+WriteHtmlBody(HtmlFile,MyArray)
+{
+For index, value in MyArray
+    FileAppend, 
+	(
+	 %value%`n
+	), %HtmlFile%
+}
+
+;+++++++++++++++++++++++++++++++++
+;FileSort(File2Sort) function    +
+;+++++++++++++++++++++++++++++++++
+FileSort(File2Sort)
+{
+FileRead, Contents, %File2Sort%
+if not ErrorLevel  ; Successfully loaded.
+{
+    Sort, Contents
+    FileDelete, %File2Sort%
+    FileAppend, %Contents%, %File2Sort%
+    Contents =  ; Free the memory.
+}
+}
